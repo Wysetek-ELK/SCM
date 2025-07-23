@@ -147,3 +147,21 @@ module.exports = (db, ensureDb) => {
 
   return router;
 };
+
+async function handleCustomerImport(users) {
+  const db = require("../utils/db").getDb();
+  const collection = db.collection("customers");
+
+  const inserts = users.map(user => ({
+      name: user.name,
+      emails: Array.isArray(user.email) ? user.email : [user.email],
+      fullName: user.fullName
+    }));
+
+  const result = await collection.insertMany(inserts, { ordered: false });
+  console.log("📦 LDAP Customer Import Preview:\n", inserts);
+  return result.insertedCount;
+}
+
+
+module.exports.handleCustomerImport = handleCustomerImport;

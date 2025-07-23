@@ -4,6 +4,6 @@
   "useTLS": false,
   "bindDN": "CN=Administrator,CN=Users,DC=cdc,DC=local",
   "bindCredentials": "c9UzR&X!sr",
-  "searchBase": "OU=MSOC,DC=cdc,DC=local",
+  "searchBase": "DC=cdc,DC=local",
   "searchFilter": "(&(objectClass=user)(objectCategory=person)(sAMAccountName={{username}}))"
 }

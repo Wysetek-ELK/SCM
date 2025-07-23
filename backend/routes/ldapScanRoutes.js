@@ -1,3 +1,4 @@
+const { handleCustomerImport } = require("./customersRoutes"); // ✅ Step 1
 const express = require("express");
 const ldap = require("ldapjs");
 const fs = require("fs");
@@ -5,7 +6,7 @@ const path = require("path");
 const router = express.Router();
 const LDAP_CONFIG_FILE = path.join(__dirname, "../ldapConfig.json");
 
-// Load LDAP Config from File
+// 🔄 Load LDAP main connection config
 function loadLdapConfig() {
   if (fs.existsSync(LDAP_CONFIG_FILE)) {
     return JSON.parse(fs.readFileSync(LDAP_CONFIG_FILE, "utf-8"));
@@ -13,12 +14,25 @@ function loadLdapConfig() {
   return null;
 }
 
-// 🔁 Sync LDAP Users Route (Fetch & list)
+// 🔄 Load OU filter config for "user" or "customer"
+function loadOUFilterConfig(source) {
+  const fileName = source === "customer" ? "ldapOUConfig.customer.json" : "ldapOUConfig.user.json";
+  const filePath = path.join(__dirname, "../" + fileName);
+  if (fs.existsSync(filePath)) {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  }
+  return { allowedOUs: [] };
+}
+
+// 🟢 Sync LDAP users route
 router.post("/sync", async (req, res) => {
   const config = loadLdapConfig();
   if (!config) {
     return res.status(500).json({ success: false, message: "LDAP not configured" });
   }
+
+  const source = req.query.source || "user"; // 👈 Get from query param
+  const { allowedOUs } = loadOUFilterConfig(source);
 
   const ldapUrl = `${config.useTLS ? "ldaps" : "ldap"}://${config.url}:${config.port}`;
   const client = ldap.createClient({ url: ldapUrl });
@@ -74,7 +88,14 @@ router.post("/sync", async (req, res) => {
     fetchUsers(usernames)
       .then(() => {
         client.unbind();
-        res.json({ success: true, users: results });
+
+        // ✅ Filter users based on allowed OUs
+        const filteredUsers = results.filter((user) => {
+          return user.ou && allowedOUs.some((allowed) => user.ou.includes(allowed));
+        });
+
+        console.log(`🔍 [${source}] Filtered ${filteredUsers.length} users based on allowed OUs:`, allowedOUs);
+        res.json({ success: true, users: filteredUsers });
       })
       .catch((err) => {
         console.error("❌ LDAP sync error:", err.message);
@@ -84,7 +105,7 @@ router.post("/sync", async (req, res) => {
   });
 });
 
-// ✅ Helper: Extract fields from LDAP result
+// 🛠️ Helper to extract LDAP fields
 function processEntry(entry, results) {
   try {
     const raw = entry.pojo || entry.json || entry.toObject?.();
@@ -103,54 +124,84 @@ function processEntry(entry, results) {
       }
     }
 
+    const dn = entry.dn?.toString?.();
+    if (dn) {
+      const ous = [...dn.matchAll(/OU=([^,]+)/gi)].map((m) => m[1]);
+      if (ous.length > 0) {
+        output.ou = ous.join("/"); // e.g. CSM-OU/SubOU
+      }
+    }
+
     if (output.sAMAccountName && output.mail) {
+      console.log("✅ Valid LDAP Output:", output);
       results.push(output);
+    } else {
+      console.warn("⚠️ Skipping invalid or incomplete LDAP entry:", output);
     }
   } catch (e) {
     console.error("❌ Error processing entry:", e.message);
   }
 }
 
-// ✅ Import scanned LDAP users into MongoDB in final structure
+// ✅ Import scanned LDAP users into MongoDB in final structure (customers)
 router.post("/import", async (req, res) => {
-  const { users } = req.body;
+  const { users, source } = req.body;
 
-  if (!Array.isArray(users)) {
-    return res.status(400).json({ success: false, message: "Invalid user data" });
+  console.log("📥 Incoming LDAP Import Request:");
+  console.log("🔹 Source:", source);
+  console.log("🔹 Users Payload:", JSON.stringify(users, null, 2));
+
+  if (!Array.isArray(users) || !["user", "customer"].includes(source)) {
+    return res.status(400).json({ success: false, message: "Invalid import request" });
   }
 
+  const db = require("../utils/db").getDb();
+
   try {
-    const db = require("../utils/db").getDb();
+    if (source === "customer") {
+      // 👇 Forward to customerRoutes logic
+      console.log("📨 handleCustomerImport received:", JSON.stringify(users, null, 2));
+
+      const { handleCustomerImport } = require("./customersRoutes"); // ✅ LOCAL import (same folder)
+      const insertedCount = await handleCustomerImport(users);
+      console.log(`✅ Inserted ${insertedCount} customer(s)`);
+      return res.json({ success: true, insertedCount });
+    }
+
+    // ✅ Default USER import logic
     const collection = db.collection("users");
 
     const inserts = users.map(user => ({
       username: user.sAMAccountName,
       email: user.mail,
-      source: "ldap",               // ✅ required field
-      wysehawk_Role: false,         // ✅ default
-      allCustomer: false,           // ✅ default
-      allCustomerRole: null,        // ✅ optional
-      allCustomerMode: false        // ✅ optional
-      // 🚫 NO createdAt
+      source: "ldap",
+      wysehawk_Role: false,
+      allCustomer: false,
+      allCustomerRole: null,
+      allCustomerMode: false
     }));
 
     const result = await collection.insertMany(inserts, { ordered: false });
     console.log("✅ Inserted LDAP users:", result.insertedCount);
 
-    res.json({ success: true, insertedCount: result.insertedCount });
+    return res.json({ success: true, insertedCount: result.insertedCount });
+
   } catch (err) {
     if (err.code === 11000 || err.name === "MongoBulkWriteError") {
-      console.warn("⚠️ Duplicate LDAP users skipped");
-      res.json({
+      console.warn("⚠️ Duplicate entries skipped");
+      return res.json({
         success: true,
         insertedCount: err.result?.insertedCount || 0,
-        message: "Some users already existed and were skipped"
+        message: "Some entries already existed and were skipped"
       });
     } else {
-      console.error("❌ Unexpected error importing LDAP users:", err);
-      res.status(500).json({ success: false, message: "Failed to import users" });
+      console.error("❌ Unexpected error during import:", err);
+      return res.status(500).json({ success: false, message: "Import failed" });
     }
   }
 });
+
+
+
 
 module.exports = router;

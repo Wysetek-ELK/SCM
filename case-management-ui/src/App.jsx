@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Cases from "./pages/Cases";
 import AddCase from "./pages/AddCase";
@@ -23,7 +23,11 @@ function App() {
     <Router future={{ v7_startTransition: true }}>
       <Routes>
         {/* Public Routes */}
-        <Route path="/login" element={<Login />} />
+        {/* ✅ Login Routes */}
+        <Route path="/login/:loginType" element={<Login />} />
+
+        {/* ✅ Optional redirect for legacy /login
+        <Route path="/login" element={<Navigate to="/login/user" replace />} /> */}
 
         {/* Customer Dashboard */}
         <Route

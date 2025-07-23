@@ -65,32 +65,36 @@ export default function UserSettings() {
   };
 
   const importScannedLdapUsers = async () => {
-  if (scannedLdapUsers.length === 0) {
-    setStatus({ type: 'error', message: 'No scanned users to import.' });
-    return;
-  }
-
-  try {
-    setLoading(true);
-    const res = await fetchAPI('/ldap-scan/import', {
-      method: 'POST',
-      body: JSON.stringify({ users: scannedLdapUsers }),
-    });
-
-    if (res.success) {
-      setStatus({ type: 'success', message: res.message || 'Users imported successfully' });
-      setShowLdapModal(false);
-      loadUsers();
-    } else {
-      setStatus({ type: 'error', message: res.message || 'Failed to import users' });
+    if (scannedLdapUsers.length === 0) {
+      setStatus({ type: 'error', message: 'No scanned users to import.' });
+      return;
     }
-  } catch (err) {
-    console.error('❌ Error importing users:', err);
-    setStatus({ type: 'error', message: 'Error occurred while importing LDAP users' });
-  } finally {
-    setLoading(false);
-  }
-};
+
+    try {
+      setLoading(true);
+      const res = await fetchAPI('/ldap-scan/import', {
+        method: 'POST',
+        body: JSON.stringify({
+          users: scannedLdapUsers,
+          source: 'user'            // ✅ This is required
+        }),
+      });
+
+      if (res.success) {
+        setStatus({ type: 'success', message: res.message || 'Users imported successfully' });
+        setShowLdapModal(false);
+        loadUsers();
+      } else {
+        setStatus({ type: 'error', message: res.message || 'Failed to import users' });
+      }
+    } catch (err) {
+      console.error('❌ Error importing users:', err);
+      setStatus({ type: 'error', message: 'Error occurred while importing LDAP users' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
 
   const handleCreateUser = async (e) => {

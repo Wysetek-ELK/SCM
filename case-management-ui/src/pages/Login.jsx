@@ -1,15 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import fetchAPI from "../utils/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import Logo from "../components/Logo";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { loginType } = useParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [authType, setAuthType] = useState("local");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (loginType === "customer") {
+      setAuthType("domain");
+    }
+  }, [loginType]);
+
 
   const handleLogin = async (e) => {
     e.preventDefault(); // Prevent form submission from reloading the page
@@ -99,18 +107,20 @@ export default function Login() {
             />
           </div>
 
-          <div className="mb-6">
-            <label className="block mb-1 font-medium">Login Type</label>
-            <select
-              value={authType}
-              onChange={(e) => setAuthType(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white border-gray-300 text-gray-900 focus:ring-blue-500"
-              disabled={loading}
-            >
-              <option value="local">Local</option>
-              <option value="domain">Domain (LDAP)</option>
-            </select>
-          </div>
+          {loginType !== "customer" && (
+            <div className="mb-6">
+              <label className="block mb-1 font-medium">Login Type</label>
+              <select
+                value={authType}
+                onChange={(e) => setAuthType(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white border-gray-300 text-gray-900 focus:ring-blue-500"
+                disabled={loading}
+              >
+                <option value="local">Local</option>
+                <option value="domain">Domain (LDAP)</option>
+              </select>
+            </div>
+          )}
 
           <button
             type="submit"
