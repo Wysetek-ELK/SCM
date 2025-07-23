@@ -1,0 +1,8 @@
+{
+  "host": "imap.gmail.com",
+  "port": 993,
+  "username": "wysetekcdc@gmail.com",
+  "password": "fmej oagb ygrz pokm",
+  "useTLS": true,
+  "checkInterval": 60000
+}

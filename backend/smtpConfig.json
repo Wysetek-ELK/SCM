@@ -1,0 +1,8 @@
+{
+  "host": "smtp.gmail.com",
+  "port": "465",
+  "username": "amit.sail12@gmail.com",
+  "password": "rifi hrjv fysw bdxl",
+  "useTLS": true,
+  "replyTo": "mssp@wysetek.com"
+}
