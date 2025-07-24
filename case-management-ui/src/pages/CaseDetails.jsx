@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import fetchAPI from '../utils/api';
-import Button from '../components/ui/Button'; // ✅ Reusable Button
+import Button from '../components/ui/Button';
+import dayjs from 'dayjs'; // ✅ Added for formatting
 
 export default function CaseDetails({ standalone = false }) {
   const orgPermissions = JSON.parse(localStorage.getItem('orgPermissions') || '{}');
@@ -40,7 +41,6 @@ export default function CaseDetails({ standalone = false }) {
     fetchCase();
   }, [id]);
 
-  // 🔄 Auto-refresh if coming from edit with refresh flag
   useEffect(() => {
     if (location.state?.refresh) {
       console.log('🔄 Refreshing case details after update');
@@ -58,19 +58,19 @@ export default function CaseDetails({ standalone = false }) {
   };
 
   const handleEdit = () => {
-  if (standalone) {
-    navigate(`/customer/cases/${id}/edit`);
-  } else {
-    navigate(`/cases/${id}/edit`);
-  }
-};
+    if (standalone) {
+      navigate(`/customer/cases/${id}/edit`);
+    } else {
+      navigate(`/cases/${id}/edit`);
+    }
+  };
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this case?')) {
       try {
         await fetchAPI(`/cases/${id}`, { method: 'DELETE' });
         alert('✅ Case deleted successfully.');
-        navigate('/cases', { state: { refresh: true } }); // Pass refresh flag to CasesList
+        navigate('/cases', { state: { refresh: true } });
       } catch (err) {
         console.error('❌ Failed to delete case:', err);
         alert('❌ Failed to delete case.');
@@ -98,7 +98,7 @@ export default function CaseDetails({ standalone = false }) {
 
   const handleBack = () => {
     if (standalone) {
-      navigate('/customer'); // 👈 Go back to CustomerDashboard
+      navigate('/customer');
     } else {
       navigate('/cases', { state: { refresh: true } });
     }
@@ -113,7 +113,6 @@ export default function CaseDetails({ standalone = false }) {
 
   return (
     <div className={`p-6 max-w-5xl mx-auto ${standalone ? '' : 'bg-gray-50 min-h-screen'}`}>
-      {/* Header with Case ID */}
       <h2 className="text-3xl font-bold mb-3 flex items-center gap-3">
         📄 Case Details
         <span className="px-2 py-1 rounded text-sm font-medium bg-gray-200 text-gray-800">
@@ -121,7 +120,6 @@ export default function CaseDetails({ standalone = false }) {
         </span>
       </h2>
 
-      {/* Buttons */}
       <div className="flex gap-3 mb-6">
         {permission === 'full' && (
           <>
@@ -152,7 +150,7 @@ export default function CaseDetails({ standalone = false }) {
         <p><strong>Stage:</strong> {getField(caseData, 'Stage', 'stage', '-')}</p>
       </div>
 
-      {/* Customer Info */}
+      {/* Customer Info & Metadata */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-white shadow rounded p-4">
           <h3 className="text-lg font-semibold mb-2">Customer Info</h3>
@@ -167,6 +165,11 @@ export default function CaseDetails({ standalone = false }) {
           <p><strong>Due Date:</strong> {getField(caseData, 'Due', 'due', '-')}</p>
           <p><strong>Elapsed:</strong> {getField(caseData, 'Elapsed', 'elapsed', '-')}</p>
           <p><strong>Assignee:</strong> {getField(caseData, 'Assignee', 'assignee', '-')}</p>
+          <p><strong>Closed On:</strong> {
+            caseData.ClosedTime
+              ? dayjs(caseData.ClosedTime).format('MMM DD, YYYY hh:mm A')
+              : '-'
+          }</p>
         </div>
       </div>
 
