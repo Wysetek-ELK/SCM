@@ -3,10 +3,9 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const { verify, sign } = require('./utils/jwtHelper'); // ✅ Centralized JWT helper
-require('dotenv').config(); // 🔥 Load .env for secrets
+const { verify, sign } = require('./utils/jwtHelper');
+require('dotenv').config();
 
-// DB-independent routes
 const smtpRoutes = require('./routes/smtpRoutes');
 const imapRoutes = require('./routes/imapRoutes');
 const ldapRoutes = require('./routes/ldapRoutes');
@@ -16,25 +15,22 @@ const healthRoutes = require('./routes/healthRoutes');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 
-// DB-dependent routes (delayed mounting)
 const casesRoutes = require('./routes/casesRoutes');
 const customersRoutes = require('./routes/customersRoutes');
-const customerCasesRoutes = require('./routes/customerCasesRoutes'); // ✅ NEW Customer Cases route
+const customerCasesRoutes = require('./routes/customerCasesRoutes');
 const { connectToMongo, getDb, ensureDb } = require('./utils/db');
 const ensureAdminRole = require('./utils/initRoles');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ✅ CORS config
 const corsOptions = {
-  origin: "http://localhost:5173", // 🔥 Adjust if needed
+  origin: "http://localhost:5173",
   credentials: true,
 };
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// ✅ Mount DB-independent routes
 app.use('/api/auth', authRoutes);
 app.use('/api/smtp', smtpRoutes);
 app.use('/api/imap', imapRoutes);
@@ -44,10 +40,9 @@ app.use('/api/db', dbConfigRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api', healthRoutes);
 
-// 🔥 JWT middleware with debug logs
+// 🔐 JWT middleware
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
-
   if (!authHeader) {
     console.warn('⚠️ No Authorization header found');
     return res.status(401).json({ success: false, message: 'No token provided' });
@@ -57,7 +52,7 @@ function verifyToken(req, res, next) {
   console.log('📦 Incoming Token:', token);
 
   try {
-    const decoded = verify(token); // ✅ Use centralized verify
+    const decoded = verify(token);
     console.log('✅ Decoded JWT Payload:', decoded);
     req.user = decoded;
     next();
@@ -67,7 +62,7 @@ function verifyToken(req, res, next) {
   }
 }
 
-// 🔥 Customer auth middleware (patched to allow admin)
+// 🔐 Customer middleware
 function verifyCustomer(req, res, next) {
   verifyToken(req, res, () => {
     const role = req.user.role?.toLowerCase();
@@ -81,19 +76,15 @@ function verifyCustomer(req, res, next) {
   });
 }
 
-// 🔥 Updated /auth/me route
 app.get('/api/auth/me', verifyToken, (req, res) => {
   console.log('🚀 /auth/me response:', {
     success: true,
     user: req.user
   });
-  res.json({
-    success: true,
-    user: req.user
-  });
+  res.json({ success: true, user: req.user });
 });
 
-// ✅ Read MongoDB config and connect Mongoose
+// 🔌 MongoDB Config
 const configPath = path.join(__dirname, 'dbConfig.json');
 if (!fs.existsSync(configPath)) {
   console.error('❌ dbConfig.json not found.');
@@ -102,10 +93,9 @@ if (!fs.existsSync(configPath)) {
 
 const dbConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 const { host, port, dbName, username, password } = dbConfig;
-
 const uri = `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${dbName}?authSource=${dbName}`;
 
-// ✅ Connect Mongoose
+// ✅ Connect with Mongoose
 mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(async () => {
     console.log('✅ Mongoose connected');
@@ -113,16 +103,17 @@ mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
     const db = mongoose.connection.db;
     await ensureAdminRole(db);
 
-    // ✅ Mount DB-dependent routes after DB is ready
+    // ✅ DB-dependent routes
     app.use('/api/roles', require('./routes/roleRoutes'));
     app.use('/api/dashboard', require('./routes/dashboardroutes')(db, ensureDb));
+    app.use('/api/metrics', require('./routes/metrics')(db)); // ✅ Now mounted after db is available
   })
   .catch((err) => {
     console.error('❌ Failed to connect to Mongoose:', err.message);
     process.exit(1);
   });
 
-// ✅ Connect legacy MongoDB client for cases and customers
+// ✅ Connect legacy MongoDB client
 (async () => {
   try {
     await connectToMongo();
@@ -136,10 +127,10 @@ mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
   }
 })();
 
-// ✅ Start mail listener (auto updates cases on incoming emails)
+// 📬 Start mail listener
 require('./mail/mailListener');
 
-// ✅ Start the server
+// 🚀 Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });

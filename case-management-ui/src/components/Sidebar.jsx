@@ -1,24 +1,25 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { FaHome, FaFolderOpen, FaPlusCircle, FaCog, FaBars } from 'react-icons/fa';
+import {
+  FaHome,
+  FaFolderOpen,
+  FaPlusCircle,
+  FaCog,
+  FaBars,
+  FaChartLine, // ✅ Added for MTTD tab
+} from 'react-icons/fa';
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [pinned, setPinned] = useState(false);
 
-  // Get user from localStorage
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const orgPermissions = user.orgPermissions || {};
-
-  // Check if user role is admin
   const isAdmin = user.role === 'admin';
 
-  // Helper function: Should we show this tab (for Dashboard, Cases, Add Case)?
   const canShowTab = (tabKey) => {
     const allOrgPerms = Object.values(orgPermissions);
-    if (allOrgPerms.length === 0) return false; // No orgs means hide
-
-    // If ALL orgs have 'hide' or no permission for this tab, hide it
+    if (allOrgPerms.length === 0) return false;
     const allHide = allOrgPerms.every(orgPerm => orgPerm[tabKey] === 'hide' || orgPerm[tabKey] === undefined);
     return !allHide;
   };
@@ -27,9 +28,9 @@ export default function Sidebar() {
     { name: 'Dashboard', path: '/', icon: <FaHome />, show: canShowTab('Dashboard') },
     { name: 'Cases', path: '/cases', icon: <FaFolderOpen />, show: canShowTab('Cases') },
     { name: 'Add New Case', path: '/add-case', icon: <FaPlusCircle />, show: canShowTab('Add Case') },
-    // Settings tab logic unchanged: show only if admin
+    { name: 'MTTD & MTTR', path: '/metrics', icon: <FaChartLine />, show: isAdmin }, // ✅ NEW TAB
     { name: 'Settings', path: '/settings', icon: <FaCog />, show: isAdmin },
-  ].filter(item => item.show); // Filter to show only allowed tabs
+  ].filter(item => item.show);
 
   const togglePin = () => setPinned(!pinned);
 
