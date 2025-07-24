@@ -53,18 +53,13 @@ export default function Cases() {
     loadCases();
   }, []);
 
-  // 🔥 Reset to page 1 when any filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, filterSeverity, filterStatus, filterOrganization]);
 
-  // 🔥 Smooth scroll when page or filters change
   useEffect(() => {
     const container = document.querySelector('.content-scroll');
-    container?.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-    });
+    container?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentPage, searchQuery, filterSeverity, filterStatus, filterOrganization]);
 
   const getField = (obj, ...keys) => {
@@ -125,10 +120,7 @@ export default function Cases() {
       setCurrentPage(pageNumber);
     } else {
       const container = document.querySelector('.content-scroll');
-      container?.scrollTo({
-        top: 0,
-        behavior: 'smooth',
-      });
+      container?.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -255,11 +247,9 @@ export default function Cases() {
           className="p-3 border border-gray-300 rounded-lg bg-white"
         >
           <option value="">All Organizations</option>
-          {[...new Set(cases.map(getOrganization))]
-            .filter(org => org && org !== 'Unknown')
-            .map(org => (
-              <option key={org} value={org}>{org}</option>
-            ))}
+          {[...new Set(cases.map(getOrganization))].filter(org => org && org !== 'Unknown').map(org => (
+            <option key={org} value={org}>{org}</option>
+          ))}
         </select>
         <button
           onClick={handleResetFilters}
@@ -283,15 +273,14 @@ export default function Cases() {
                 <th className="p-3 text-left">Status</th>
                 <th className="p-3 text-left">Creator</th>
                 <th className="p-3 text-left">Date</th>
+                <th className="p-3 text-left">Closed</th>
                 <th className="p-3 text-left">Organization</th>
                 <th className="p-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody>
               {currentCases.map((c) => {
-                const { date, time } = formatDateParts(
-                  getField(c, 'Created', 'created', c.createdAt)
-                );
+                const { date, time } = formatDateParts(getField(c, 'Created', 'created', c.createdAt));
                 return (
                   <tr key={c._id} className="border-b hover:bg-gray-50 transition">
                     <td className="p-3">{getField(c, 'Case ID', 'caseId')}</td>
@@ -299,7 +288,22 @@ export default function Cases() {
                     <td className="p-3">{getBadge('severity', getField(c, 'Severity', 'severity'))}</td>
                     <td className="p-3">{getBadge('status', getField(c, 'Status', 'status'))}</td>
                     <td className="p-3">{getField(c, 'Creator', 'creatorEmail')}</td>
-                    <td className="p-3">{date}<br /><span className="text-xs text-gray-500">{time}</span></td>
+                    <td className="p-3">
+                      {date}<br />
+                      <span className="text-xs text-gray-500">{time}</span>
+                    </td>
+                    <td className="p-3">
+                      {getField(c, 'Status')?.toLowerCase() === 'closed' && getField(c, 'ClosedTime') ? (
+                        <span
+                          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700 border border-gray-300"
+                          title={dayjs(getField(c, 'ClosedTime')).format('MMM DD, YYYY hh:mm A')}
+                        >
+                          ✅ {dayjs(getField(c, 'ClosedTime')).format('MMM DD, YYYY')}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">N/A</span>
+                      )}
+                    </td>
                     <td className="p-3">{getOrganization(c)}</td>
                     <td className="p-3">
                       <button
