@@ -25,18 +25,20 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await fetchAPI(`/auth/check-username?username=${username}`);
-      if (response.exists && response.type === "user") {
-        navigate(`/login/user?username=${username}`);
-      } else if (response.exists && response.type === "customer") {
-        navigate(`/login/customer?username=${username}`);
-      } else {
-        setError("Username not found");
-      }
-    } catch (err) {
-      console.error("❌ Username check error:", err);
-      setError("Server error. Please try again later.");
-    } finally {
+    const response = await fetchAPI(`/auth/check-username?username=${username}&name=${username}`);
+
+    if (response.type === 'user') {
+      navigate('/login/user', { state: { username } });
+    } else if (response.type === 'customer') {
+      navigate('/login/customer', { state: { username } });
+    } else {
+      setStatus({ type: 'error', message: 'Username not found' });
+    }
+
+  } catch (error) {
+    console.error('Error during username check:', error);
+    setStatus({ type: 'error', message: 'Username not found' });
+  } finally {
       setLoading(false);
     }
   };
@@ -63,7 +65,13 @@ export default function Login() {
           localStorage.removeItem("orgPermissions");
         }
 
-        navigate("/");
+        if (response.user?.organization && !response.user?.role) {
+          // If user has organization but no role → must be a Customer
+          navigate("/customer");
+        } else {
+          // Internal user (Admin, Support, etc.)
+          navigate("/");
+        }
       } else {
         if (response.status === 403) setError("Access denied");
         else if (response.status === 401) setError("Invalid Username or Password");

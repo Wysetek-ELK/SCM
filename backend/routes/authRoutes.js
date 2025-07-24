@@ -6,7 +6,6 @@ const fs = require("fs");
 const path = require("path");
 const Role = require("../models/Role");
 const User = require("../models/User");
-const Customer = require("../models/Customer"); 
 
 //test
 
@@ -29,13 +28,27 @@ const localUsers = [
   },
 ];
 
-async function ldapAuthenticate(username, password) {
+async function ldapAuthenticate(username, password, source = "user") {
+  
+  console.log("🔍 Starting LDAP authentication");
+  console.log("👤 Username:", username);
+  console.log("🔧 Source:", source);
+  console.log("📁 LDAP Config file exists?", fs.existsSync(LDAP_CONFIG_FILE));
+
+  if (fs.existsSync(LDAP_CONFIG_FILE)) {
+    const config = JSON.parse(fs.readFileSync(LDAP_CONFIG_FILE, "utf8"));
+    console.log("📄 LDAP Config loaded:", config);
+  }
+
   if (!fs.existsSync(LDAP_CONFIG_FILE)) {
     console.warn("⚠️ LDAP config file not found");
     return false;
   }
 
   const config = JSON.parse(fs.readFileSync(LDAP_CONFIG_FILE, "utf8"));
+  const { allowedOUs } = loadOUFilterConfig(source);
+  console.log("📚 Loaded OU filters:", allowedOUs);
+
   const ldapUrl = config.useTLS
     ? `ldaps://${config.url}:${config.port || 636}`
     : `ldap://${config.url}:${config.port || 389}`;
@@ -63,21 +76,26 @@ async function ldapAuthenticate(username, password) {
         }
 
         let userDN = null;
+        let userOUs = [];
 
         res.on("searchEntry", (entry) => {
-          userDN = entry.dn?.toString();
-        });
-
-        res.on("error", (err) => {
-          console.error("❌ Search error:", err.message);
-          client.unbind();
-          resolve(false);
+          userDN = entry.dn?.toString?.();
+          userOUs = [...userDN.matchAll(/OU=([^,]+)/gi)].map((m) => m[1]);
         });
 
         res.on("end", () => {
           client.unbind();
           if (!userDN) {
             console.warn("⚠️ User not found in LDAP");
+            return resolve(false);
+          }
+
+          const isAllowedOU = allowedOUs.length === 0 || userOUs.some((ou) =>
+            allowedOUs.some((allowed) => ou.includes(allowed))
+          );
+
+          if (!isAllowedOU) {
+            console.warn("❌ User found, but OU not allowed:", userOUs);
             return resolve(false);
           }
 
@@ -96,6 +114,16 @@ async function ldapAuthenticate(username, password) {
   });
 }
 
+
+function loadOUFilterConfig(source) {
+  const fileName = source === "customer" ? "ldapOUConfig.customer.json" : "ldapOUConfig.user.json";
+  const filePath = path.join(__dirname, "../" + fileName);
+  if (fs.existsSync(filePath)) {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  }
+  return { allowedOUs: [] };
+}
+
 async function localAuthenticate(username, password) {
   const dbUser = await User.findOne({ username });
   if (!dbUser || !dbUser.password) return false;
@@ -107,53 +135,53 @@ async function localAuthenticate(username, password) {
 router.post("/login", async (req, res) => {
   const { username, password, authType, organization } = req.body;
 
+  console.log("🌐 Incoming login request:");
+  console.log("🔸 Username:", username);
+  console.log("🔸 AuthType:", authType);
+  console.log("🔸 Organization:", organization);
+
   if (!username || !password) {
+    console.warn("⚠️ Missing username or password in request");
     return res.status(400).json({ success: false, message: "Missing credentials" });
   }
 
-  if (authType === "customer") {
-    const ldapOk = await ldapAuthenticate(username, password);
-    if (!ldapOk) {
-      return res.status(401).json({ success: false, message: "Invalid LDAP credentials" });
-    }
-
-    const dbCustomer = await Customer.findOne({ name: username });
-    if (!dbCustomer) {
-      return res.status(404).json({ success: false, message: "Customer not found in system" });
-    }
-
-    const payload = {
-      username: dbCustomer.name,
-      email: dbCustomer.email,
-      fullName: dbCustomer.fullName,
-      role: "Customer",
-    };
-
-    const token = sign(payload);
-    console.log("✅ Customer login:", payload);
-    return res.json({ success: true, token, user: payload });
-  }
-
   let authenticated = false;
+
+  const isCustomer = await Customer.findOne({ name: username });
+  console.log("🔍 isCustomer check:", !!isCustomer);
+
   if (authType === "domain") {
-    authenticated = await ldapAuthenticate(username, password);
+    console.log("🔐 Using DOMAIN (LDAP) authentication");
+    authenticated = await ldapAuthenticate(username, password, isCustomer ? "customer" : "user");
   } else if (authType === "local") {
+    console.log("🔐 Using LOCAL authentication");
     authenticated = await localAuthenticate(username, password);
   } else {
-    authenticated = await ldapAuthenticate(username, password);
+    console.log("🔐 Using HYBRID authentication (try LDAP, then fallback to local)");
+    authenticated = await ldapAuthenticate(username, password, isCustomer ? "customer" : "user");
     if (!authenticated) {
+      console.log("🔁 LDAP failed, trying local...");
       authenticated = await localAuthenticate(username, password);
     }
   }
 
   if (!authenticated) {
+    console.warn("❌ Authentication failed for:", username);
     return res.status(401).json({ success: false, message: "Invalid username or password" });
   }
 
+  console.log("✅ Authentication successful");
+
+  // =============================
+  // User or Local Fallback logic
+  // =============================
   let dbUser = await User.findOne({ username });
 
   if (dbUser) {
+    console.log("🧠 Found DB user:", dbUser.username);
+
     if (!dbUser.wysehawk_Role) {
+      console.warn("⛔ Wysehawk role is disabled for this user");
       return res.status(403).json({
         success: false,
         message: "Access denied: Wysehawk role is disabled",
@@ -162,15 +190,13 @@ router.post("/login", async (req, res) => {
 
     const hasValidOrg = Array.isArray(dbUser.allCustomer)
       ? dbUser.allCustomer.some((org) => {
-          const isEnabled =
-            org.Enabled === true ||
-            org.Enabled === "true" ||
-            org.Enabled === "True";
+          const isEnabled = org.Enabled === true || org.Enabled === "true" || org.Enabled === "True";
           return isEnabled && org.Role;
         })
       : false;
 
     if (!hasValidOrg) {
+      console.warn("⛔ User has no valid enabled org with a role");
       return res.status(403).json({
         success: false,
         message: "Access denied",
@@ -205,14 +231,36 @@ router.post("/login", async (req, res) => {
     payload.uiPermissions = roleDoc?.uiPermissions || {};
 
     const token = sign(payload);
-    console.log("✅ Response sent to frontend:", { token, user: payload });
+    console.log("🎫 Token issued for:", payload.username);
+    console.log("🔐 Final JWT Payload:", payload);
+
     return res.json({ success: true, token, user: payload });
   }
 
+  if (isCustomer) {
+    console.log("🧾 Logging in as CUSTOMER:", username);
+
+    const payload = {
+      username: username,
+      email: `${username}@customer.local`,
+      role: null, // no role needed
+      organization: isCustomer.name,
+      permissions: [],
+    };
+
+    const token = sign(payload);
+    console.log("🎫 Token issued for customer:", payload.username);
+    return res.json({ success: true, token, user: payload });
+  }
+
+  // Local fallback users
   const localUser = localUsers.find((u) => u.username === username);
   if (!localUser) {
+    console.warn("⚠️ User not found in DB or localUsers list");
     return res.status(404).json({ success: false, message: "User not found" });
   }
+
+  console.log("🧠 Using fallback local user:", localUser.username);
 
   const payload = {
     username: localUser.username,
@@ -226,7 +274,28 @@ router.post("/login", async (req, res) => {
   payload.permissions = roleDoc?.permissions || [];
 
   const token = sign(payload);
+  console.log("🎫 Token issued for local user:", payload.username);
   return res.json({ success: true, token, user: payload });
+});
+
+const Customer = require("../models/Customer");
+
+router.get("/check-username", async (req, res) => {
+  const { username, name } = req.query;
+  if (!username) return res.status(400).json({ message: "Missing username" });
+
+  const user = await User.findOne({ username });                 // ✅ correct for User
+  const customer = await Customer.findOne({ name: name || username });
+  console.log("Customer: ", customer);   // ✅ correct for Customer
+
+  if (user) {
+    return res.json({ type: "user" });
+  } else if (customer) {
+    console.log("✅ Customer found:", customer);
+    return res.json({ type: "customer" });  // ✅ This line MUST exist
+  } else {
+    return res.status(404).json({ message: "Username not found" });
+  }
 });
 
 module.exports = router;
