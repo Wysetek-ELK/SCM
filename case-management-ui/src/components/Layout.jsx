@@ -59,7 +59,7 @@ export default function Layout() {
         {/* Header */}
         <header className="bg-white shadow-sm p-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <span className="text-2xl font-extrabold text-red-600">WyseHawk</span>
+            <span className="text-2xl font-extrabold text-red-600">WyseTrack</span>
             <span className="text-green-600 font-medium hidden sm:inline">| Case Management System</span>
           </div>
           <div className="flex items-center gap-3">

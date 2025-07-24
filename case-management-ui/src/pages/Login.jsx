@@ -100,7 +100,7 @@ export default function Login() {
         </div>
 
         <h2 className="text-3xl font-semibold text-center mb-2">
-          Welcome to Wysetek CMS
+          Welcome to WyseTrack CMS
         </h2>
         <p className="text-center mb-6">
           {loginType ? "Sign in to your account" : "Enter your username"}

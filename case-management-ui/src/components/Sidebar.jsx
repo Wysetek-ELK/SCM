@@ -44,7 +44,7 @@ export default function Sidebar() {
       {/* Header / Logo */}
       <div className="flex items-center justify-between p-4 border-b border-gray-800">
         {!collapsed && (
-          <span className="text-xl font-extrabold text-red-400">📊 WyseHawk</span>
+          <span className="text-xl font-extrabold text-red-400">📊 WyseTrack</span>
         )}
         <button
           onClick={togglePin}
@@ -80,7 +80,7 @@ export default function Sidebar() {
       <div className="p-4 border-t border-gray-800">
         {!collapsed && (
           <div className="text-xs text-gray-400 text-center">
-            WyseHawk © 2025
+            WyseTrack © 2025
           </div>
         )}
       </div>

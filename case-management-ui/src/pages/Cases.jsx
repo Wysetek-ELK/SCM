@@ -12,7 +12,7 @@ export default function Cases() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterOrganization, setFilterOrganization] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const casesPerPage = 10;
+  const [casesPerPage, setCasesPerPage] = useState(10);
 
   const getCasePermissionsByOrg = () => {
     const raw = localStorage.getItem('orgPermissions');
@@ -257,6 +257,32 @@ export default function Cases() {
         >
           🔄 Reset Filters
         </button>
+      </div>
+
+      {/* Page Info & Per-Page Selector */}
+      <div className="flex justify-between items-center mb-4">
+        <div className="text-sm text-gray-600">
+          Showing <b>{currentCases.length}</b> of <b>{filteredCases.length}</b> cases
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="casesPerPage" className="text-sm text-gray-600">
+            Cases per page:
+          </label>
+          <select
+            id="casesPerPage"
+            value={casesPerPage}
+            onChange={(e) => {
+              setCasesPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="p-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={40}>40</option>
+            <option value={60}>60</option>
+          </select>
+        </div>
       </div>
 
       {/* Table */}
