@@ -26,8 +26,9 @@ function App() {
         {/* ✅ Login Routes */}
         <Route path="/login/:loginType" element={<Login />} />
 
-        {/* ✅ Optional redirect for legacy /login
-        <Route path="/login" element={<Navigate to="/login/user" replace />} /> */}
+        {/* ✅ Optional redirect for legacy /login */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/login/:loginType" element={<Login />} />
 
         {/* Customer Dashboard */}
         <Route

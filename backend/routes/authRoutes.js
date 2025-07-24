@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const Role = require("../models/Role");
 const User = require("../models/User");
+const Customer = require("../models/Customer"); 
 
 //test
 
@@ -108,6 +109,29 @@ router.post("/login", async (req, res) => {
 
   if (!username || !password) {
     return res.status(400).json({ success: false, message: "Missing credentials" });
+  }
+
+  if (authType === "customer") {
+    const ldapOk = await ldapAuthenticate(username, password);
+    if (!ldapOk) {
+      return res.status(401).json({ success: false, message: "Invalid LDAP credentials" });
+    }
+
+    const dbCustomer = await Customer.findOne({ name: username });
+    if (!dbCustomer) {
+      return res.status(404).json({ success: false, message: "Customer not found in system" });
+    }
+
+    const payload = {
+      username: dbCustomer.name,
+      email: dbCustomer.email,
+      fullName: dbCustomer.fullName,
+      role: "Customer",
+    };
+
+    const token = sign(payload);
+    console.log("✅ Customer login:", payload);
+    return res.json({ success: true, token, user: payload });
   }
 
   let authenticated = false;
