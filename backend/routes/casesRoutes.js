@@ -1,12 +1,12 @@
 const express = require('express');
 const { ObjectId } = require('mongodb');
-const nodemailer = require('nodemailer'); // ✅ Added for sending emails
+const nodemailer = require('nodemailer');
 const router = express.Router();
 
 module.exports = (db, ensureDb) => {
   router.use(ensureDb);
 
-  // ✅ Utility: Clean payload (remove undefined/null and _id)
+  // ✅ Utility: Clean payload (remove undefined/null and _id) and normalize "Update" → "ResolutionNote"
   const cleanPayload = (obj) => {
     const cleanObj = {};
     for (const key in obj) {
@@ -14,9 +14,13 @@ module.exports = (db, ensureDb) => {
         obj[key] !== undefined &&
         obj[key] !== null &&
         obj[key] !== '' &&
-        key !== '_id' // 🚨 Strip _id
+        key !== '_id'
       ) {
-        cleanObj[key] = obj[key];
+        if (key === 'Update') {
+          cleanObj['ResolutionNote'] = obj[key]; // ✅ Rename old field
+        } else {
+          cleanObj[key] = obj[key];
+        }
       }
     }
     return cleanObj;
@@ -33,62 +37,47 @@ module.exports = (db, ensureDb) => {
     }
   });
 
-  // ✅ Add new case (with validation and duplicate Case ID handling)
+  // ✅ Add new case
   router.post('/', async (req, res) => {
     const cleanedCase = cleanPayload(req.body);
 
-    // 🛑 Validate Case ID (must not be missing or empty)
     const caseId = cleanedCase['Case ID'];
     if (!caseId || typeof caseId !== 'string' || caseId.trim() === '') {
-      console.warn('⚠️ Missing or invalid Case ID in request payload');
-      return res.status(400).json({
-        success: false,
-        message: 'Case ID is required and must not be empty'
-      });
+      return res.status(400).json({ success: false, message: 'Case ID is required' });
     }
 
-    // 🔥 Auto-fill organization from customer if missing
     if (!cleanedCase.organization && cleanedCase.customer) {
       cleanedCase.organization = cleanedCase.customer;
-      console.log(`📌 Auto-filled organization from customer: ${cleanedCase.organization}`);
     }
 
-    console.log('📥 Incoming case payload (after auto-fill):', JSON.stringify(cleanedCase, null, 2));
-
     try {
-      // 🔍 Check if Case ID already exists
       const existing = await db.collection('cases').findOne({ 'Case ID': caseId });
       if (existing) {
-        console.error('❌ Duplicate Case ID detected:', caseId);
-        return res.status(409).json({
-          success: false,
-          message: `Duplicate Case ID "${caseId}" already exists`
-        });
+        return res.status(409).json({ success: false, message: `Duplicate Case ID "${caseId}"` });
       }
 
       const result = await db.collection('cases').insertOne(cleanedCase);
-      console.log('✅ Case inserted with ID:', result.insertedId);
       res.json({ success: true, id: result.insertedId });
     } catch (err) {
       console.error('❌ Failed to add case:', err);
-      res.status(500).json({
-        success: false,
-        message: err.message || 'Failed to add case'
-      });
+      res.status(500).json({ success: false, message: err.message || 'Failed to add case' });
     }
   });
 
-  // ✅ Get case by custom Case ID (field "Case ID" in DB)
+  // ✅ Get case by "Case ID"
   router.get('/by-caseid/:caseId', async (req, res) => {
     try {
       const caseIdParam = req.params.caseId;
-      console.log(`🔎 Fetching case with Case ID: ${caseIdParam}`);
-
       const caseItem = await db.collection('cases').findOne({ 'Case ID': caseIdParam });
 
       if (!caseItem) {
-        console.warn(`⚠️ Case not found for Case ID: ${caseIdParam}`);
         return res.status(404).json({ success: false, message: 'Case not found' });
+      }
+
+      // 👇 Normalize old field if needed
+      if (caseItem.Update && !caseItem.ResolutionNote) {
+        caseItem.ResolutionNote = caseItem.Update;
+        delete caseItem.Update;
       }
 
       res.json(caseItem);
@@ -98,19 +87,15 @@ module.exports = (db, ensureDb) => {
     }
   });
 
-  // ✅ Update case (PUT and PATCH supported) with safe PATCH fix
+  // ✅ Update case
   const updateCase = async (req, res) => {
     const cleanedCase = cleanPayload(req.body);
     const caseId = req.params.id;
 
-    console.log('📥 Incoming PATCH payload:', cleanedCase);
-
-    // 🔥 Try both ObjectId and string _id
     const filter = ObjectId.isValid(caseId)
       ? { _id: new ObjectId(caseId) }
       : { _id: caseId };
 
-    // ✅ Auto-map "status" to "Status" if DB uses capital S
     if (cleanedCase.status && !cleanedCase.Status) {
       cleanedCase.Status = cleanedCase.status;
       delete cleanedCase.status;
@@ -123,15 +108,13 @@ module.exports = (db, ensureDb) => {
       );
 
       if (result.matchedCount === 0) {
-        console.warn(`⚠️ No case found for update with ID: ${caseId}`);
         return res.status(404).json({ success: false, message: 'Case not found' });
       }
 
-      console.log(`✅ Case updated (ID: ${caseId}), Modified: ${result.modifiedCount}`);
       res.json({ success: true, modified: result.modifiedCount });
     } catch (err) {
       console.error('❌ Failed to update case:', err.message);
-      res.status(500).json({ success: false, message: 'Failed to update case', error: err.message });
+      res.status(500).json({ success: false, message: 'Failed to update case' });
     }
   };
 
@@ -149,30 +132,33 @@ module.exports = (db, ensureDb) => {
     }
   });
 
-  // ✅ Get case by MongoDB _id
+  // ✅ Get case by _id
   router.get('/:id', async (req, res) => {
     try {
       const caseId = req.params.id;
-      console.log(`🔎 Fetching case with ID: ${caseId}`);
-
       const filter = ObjectId.isValid(caseId)
         ? { _id: new ObjectId(caseId) }
         : { _id: caseId };
 
       const caseItem = await db.collection('cases').findOne(filter);
       if (!caseItem) {
-        console.warn(`⚠️ Case not found for ID: ${caseId}`);
         return res.status(404).json({ success: false, message: 'Case not found' });
+      }
+
+      // 👇 Normalize old field if needed
+      if (caseItem.Update && !caseItem.ResolutionNote) {
+        caseItem.ResolutionNote = caseItem.Update;
+        delete caseItem.Update;
       }
 
       res.json(caseItem);
     } catch (err) {
       console.error('❌ Error fetching case by ID:', err.message);
-      res.status(500).json({ success: false, message: 'Failed to fetch case', error: err.message });
+      res.status(500).json({ success: false, message: 'Failed to fetch case' });
     }
   });
 
-  // ✅ Send Mail API
+  // ✅ Send mail API
   router.post('/:id/send-mail', async (req, res) => {
     const caseId = req.params.id;
 
@@ -217,7 +203,7 @@ module.exports = (db, ensureDb) => {
       res.json({ success: true, message: 'Email sent successfully' });
     } catch (err) {
       console.error('❌ Failed to send email:', err.message);
-      res.status(500).json({ success: false, message: 'Failed to send email', error: err.message });
+      res.status(500).json({ success: false, message: 'Failed to send email' });
     }
   });
 

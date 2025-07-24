@@ -1,3 +1,4 @@
+// CaseEdit.jsx
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import fetchAPI from '../utils/api';
@@ -11,7 +12,7 @@ export default function CaseEdit() {
   const [sending, setSending] = useState(false);
   const [permission, setPermission] = useState(null);
   const [org, setOrg] = useState(null);
-  const [updateValid, setUpdateValid] = useState(true); // For update field validation
+  const [resolutionValid, setResolutionValid] = useState(true);
 
   useEffect(() => {
     const fetchCase = async () => {
@@ -26,7 +27,6 @@ export default function CaseEdit() {
 
         setFormData(cleanData);
 
-        // 🔐 Check permission
         const rawPermissions = localStorage.getItem('orgPermissions');
         const orgPermissions = rawPermissions ? JSON.parse(rawPermissions) : {};
 
@@ -67,16 +67,23 @@ export default function CaseEdit() {
   };
 
   const navigateBackToDetails = () => {
-    // Navigate back to CaseDetails with refresh flag
     navigate(`/cases/${id}`, { state: { refresh: true } });
   };
 
   const handleClose = async () => {
-    const updateWordCount = countWords(formData['Update']);
-    if (updateWordCount >= 15) {
+    const resolutionWordCount = countWords(formData['ResolutionNote']);
+    if (resolutionWordCount >= 15) {
       try {
-        const updatedData = { ...formData, Status: 'Closed' }; // ✅ Fix: send capital "Status"
+        const currentTime = new Date().toISOString();
+
+        const updatedData = {
+          ...formData,
+          Status: 'Closed',
+          ClosedTime: currentTime
+        };
+
         console.log("🔄 Saving updated data:", updatedData);
+
         await fetchAPI(`/cases/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(updatedData)
@@ -89,8 +96,8 @@ export default function CaseEdit() {
         alert('❌ Failed to close case.');
       }
     } else {
-      setUpdateValid(false);
-      alert('❌ The "Update" field must contain at least 15 words.');
+      setResolutionValid(false);
+      alert('❌ "Resolution Note" must contain at least 15 words.');
     }
   };
 
@@ -141,7 +148,7 @@ export default function CaseEdit() {
           html: `
             <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
               <h2 style="color: #2c7be5;">📌 Case Updated: ${formData.Summary}</h2>
-              <p><strong>Updated by Analyst:</strong> ${formData['Update']}</p>
+              <p><strong>Resolution Note by Analyst:</strong> ${formData['ResolutionNote']}</p>
               <hr style="border: 1px solid #ccc; margin: 20px 0;" />
               <h3 style="color: #2c7be5;">🔹 Latest Case Details</h3>
               <p><strong>Severity:</strong> ${formData.Severity}</p>
@@ -180,6 +187,7 @@ export default function CaseEdit() {
     <div className="p-6 max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold mb-4">✏️ Edit Case</h2>
       <div className="space-y-4">
+
         {/* Summary */}
         <div>
           <label className="block font-medium mb-1">Summary</label>
@@ -234,23 +242,24 @@ export default function CaseEdit() {
           ></textarea>
         </div>
 
-        {/* Update */}
+        {/* Resolution Note */}
         <div>
-          <label className="block font-medium mb-1">Update</label>
+          <label className="block font-medium mb-1">Resolution Note</label>
           <textarea
-            name="Update"
-            value={formData['Update'] || ''}
+            name="ResolutionNote"
+            value={formData['ResolutionNote'] || ''}
             onChange={handleChange}
             className="w-full p-2 border rounded h-32 resize-y"
-            placeholder="Enter update here (min. 15 words)..."
+            placeholder="Enter resolution note (min. 15 words)..."
           ></textarea>
-          {!updateValid && (
+          {!resolutionValid && (
             <p className="text-red-500 mt-1">
-              Update must contain at least 15 words.
+              Resolution Note must contain at least 15 words.
             </p>
           )}
         </div>
 
+        {/* Buttons */}
         <div className="flex gap-3 mt-6">
           <Button onClick={handleSave} variant="success" icon="💾">Save</Button>
           <Button onClick={handleClose} variant="danger" icon="🚪">Close</Button>
