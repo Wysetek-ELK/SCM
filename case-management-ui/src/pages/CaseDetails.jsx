@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import fetchAPI from '../utils/api';
 import Button from '../components/ui/Button';
-import dayjs from 'dayjs'; // ✅ Added for formatting
+import dayjs from 'dayjs';
 
 export default function CaseDetails({ standalone = false }) {
   const orgPermissions = JSON.parse(localStorage.getItem('orgPermissions') || '{}');
@@ -12,6 +12,8 @@ export default function CaseDetails({ standalone = false }) {
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [justReopened, setJustReopened] = useState(false);
+  const [showToast, setShowToast] = useState(false);
 
   const fetchCase = async () => {
     setLoading(true);
@@ -43,17 +45,13 @@ export default function CaseDetails({ standalone = false }) {
 
   useEffect(() => {
     if (location.state?.refresh) {
-      console.log('🔄 Refreshing case details after update');
       fetchCase();
     }
   }, [location.state]);
 
   const getField = (obj, oldKey, newKey, fallback = 'Unknown') => {
     const value = obj?.[newKey] ?? obj?.[oldKey];
-    if (value === undefined || value === null) {
-      console.warn(`⚠️ Missing field: '${newKey}' / '${oldKey}' in`, obj);
-      return fallback;
-    }
+    if (value === undefined || value === null) return fallback;
     return value;
   };
 
@@ -75,6 +73,26 @@ export default function CaseDetails({ standalone = false }) {
         console.error('❌ Failed to delete case:', err);
         alert('❌ Failed to delete case.');
       }
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!window.confirm('Are you sure you want to reopen this case?')) return;
+
+    try {
+      await fetchAPI(`/cases/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Status: 'Open' })
+      });
+
+      setJustReopened(true); // Enable Edit
+      setShowToast(true); // Show banner
+      setTimeout(() => setShowToast(false), 4000);
+      fetchCase(); // Refresh from backend
+    } catch (err) {
+      console.error('❌ Failed to reopen case:', err);
+      alert('❌ Failed to reopen case.');
     }
   };
 
@@ -110,6 +128,7 @@ export default function CaseDetails({ standalone = false }) {
 
   const caseOrg = getField(caseData, 'Organization', 'organization', '-');
   const permission = orgPermissions[caseOrg]?.['Case Details'] || 'hide';
+  const isClosed = getField(caseData, 'Status', 'status', '').toLowerCase() === 'closed';
 
   return (
     <div className={`p-6 max-w-5xl mx-auto ${standalone ? '' : 'bg-gray-50 min-h-screen'}`}>
@@ -120,11 +139,42 @@ export default function CaseDetails({ standalone = false }) {
         </span>
       </h2>
 
-      <div className="flex gap-3 mb-6">
+      {/* Toast/Banner */}
+      {showToast && (
+        <div className="fixed bottom-6 right-6 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50">
+          ✅ Case marked as reopened
+        </div>
+      )}
+
+      <div className="flex gap-3 mb-6 flex-wrap items-center">
         {permission === 'full' && (
           <>
-            <Button onClick={handleEdit} variant="success" icon="✏️">Edit</Button>
-            <Button onClick={handleDelete} variant="danger" icon="🗑️">Delete</Button>
+            {(!isClosed || justReopened) ? (
+              <>
+                <Button onClick={handleEdit} variant="success" icon="✏️">Edit</Button>
+                <Button disabled variant="danger" icon="🗑️" className="opacity-50 cursor-not-allowed">
+                  Delete
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-200 text-gray-700 border border-gray-300">
+                  🚫 Editing disabled (Closed)
+                </span>
+                <Button disabled variant="danger" icon="🗑️" className="opacity-50 cursor-not-allowed">
+                  Delete
+                </Button>
+                <Button
+                  onClick={handleReopen}
+                  variant="warning"
+                  icon="🔓"
+                  disabled={justReopened}
+                  className={justReopened ? "opacity-50 cursor-not-allowed" : ""}
+                >
+                  Reopen Case
+                </Button>
+              </>
+            )}
           </>
         )}
         <Button onClick={handleSendEmail} variant="primary" icon="📧">Send Email</Button>
@@ -148,6 +198,9 @@ export default function CaseDetails({ standalone = false }) {
         <p><strong>Risk:</strong> {getField(caseData, 'Risk', 'risk', '-')}</p>
         <p><strong>Status:</strong> {getField(caseData, 'Status', 'status', '-')}</p>
         <p><strong>Stage:</strong> {getField(caseData, 'Stage', 'stage', '-')}</p>
+        {isClosed && (
+          <p><strong>Resolution Note:</strong> {getField(caseData, 'ResolutionNote', 'Resolution Note', '-')}</p>
+        )}
       </div>
 
       {/* Customer Info & Metadata */}

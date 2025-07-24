@@ -78,7 +78,7 @@ export default function CaseEdit() {
 
         const updatedData = {
           ...formData,
-          Status: 'Closed',
+          status: 'Closed',
           ClosedTime: currentTime
         };
 

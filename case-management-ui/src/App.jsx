@@ -17,6 +17,7 @@ import PrivateRoute from "./components/PrivateRoute";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import CustomerCaseEdit from "./pages/CustomerCaseEdit"; // ✅ New
 import ProtectedRoute from "./components/ProtectedRoute";
+import MTTDPage from "./pages/MTTDPage"; // ✅ New import for MTTD/MTTR page
 
 function App() {
   return (
@@ -25,8 +26,6 @@ function App() {
         {/* Public Routes */}
         {/* ✅ Login Routes */}
         <Route path="/login/:loginType" element={<Login />} />
-
-        {/* ✅ Optional redirect for legacy /login */}
         <Route path="/login" element={<Login />} />
         <Route path="/login/:loginType" element={<Login />} />
 
@@ -84,6 +83,9 @@ function App() {
           <Route path="cases/:id" element={<CaseDetails />} />
           <Route path="cases" element={<Cases />} />
           <Route path="add-case" element={<AddCase />} />
+
+          {/* ✅ MTTD/MTTR Page Route */}
+          <Route path="metrics" element={<MTTDPage />} />
 
           {/* ✅ Protected Settings Route */}
           <Route path="settings" element={<ProtectedRoute permissionKey="Settings" />}>
