@@ -30,6 +30,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/login/:loginType" element={<Login />} />
 
+        /*Test*/
+
         {/* Customer Dashboard */}
         <Route
           path="/customer"
