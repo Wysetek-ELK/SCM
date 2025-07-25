@@ -22,11 +22,23 @@ export default function CaseDetails({ standalone = false }) {
 
       const caseOrg = res?.Organization || res?.organization;
 
-      const raw = localStorage.getItem('orgPermissions');
-      const orgPermissions = raw ? JSON.parse(raw) : {};
-      const permission = orgPermissions[caseOrg]?.['Case Details'] || 'hide';
+// ✅ If user is admin or belongs to the same org, allow access
+      const token = localStorage.getItem('token');
+      let allowAccess = false;
 
-      if (permission === 'hide') {
+      if (token) {
+        const decoded = JSON.parse(atob(token.split('.')[1]));
+        const userRole = decoded?.role?.toLowerCase();
+        const userOrg = decoded?.organization;
+
+        if (userRole === 'admin') {
+          allowAccess = true;
+        } else if (userRole === 'customer' && userOrg === caseOrg) {
+          allowAccess = true;
+        }
+      }
+
+      if (!allowAccess) {
         setPermissionDenied(true);
         return;
       }
@@ -127,7 +139,25 @@ export default function CaseDetails({ standalone = false }) {
   if (!caseData) return <p className="text-center mt-10 text-red-500">❌ Case not found.</p>;
 
   const caseOrg = getField(caseData, 'Organization', 'organization', '-');
-  const permission = orgPermissions[caseOrg]?.['Case Details'] || 'hide';
+  const token = localStorage.getItem('token');
+  let permission = 'hide';
+
+  if (token) {
+    try {
+      const decoded = JSON.parse(atob(token.split('.')[1]));
+      const userRole = decoded?.role?.toLowerCase();
+      const userOrg = decoded?.organization;
+
+      if (userRole === 'admin') {
+        permission = 'full';
+      } else if (userRole === 'customer' && userOrg === caseOrg) {
+        permission = 'full';
+      }
+    } catch (e) {
+      console.error('❌ Failed to decode token', e);
+    }
+  }
+
   const isClosed = getField(caseData, 'Status', 'status', '').toLowerCase() === 'closed';
 
   return (

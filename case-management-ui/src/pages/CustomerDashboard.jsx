@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import fetchAPI from '../utils/api';
 import dayjs from 'dayjs';
+import { jwtDecode } from 'jwt-decode';
 
 export default function CustomerDashboard() {
   const navigate = useNavigate();
@@ -12,35 +13,61 @@ export default function CustomerDashboard() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterOrganization, setFilterOrganization] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [username, setUsername] = useState('');
+  const [userRole, setUserRole] = useState('');
+  const [userOrg, setUserOrg] = useState('');
   const casesPerPage = 10;
-
-  const getCasePermissionsByOrg = () => {
-    const raw = localStorage.getItem('orgPermissions');
-    const orgPermissions = raw ? JSON.parse(raw) : {};
-    const orgAccess = {};
-
-    for (const [org, perms] of Object.entries(orgPermissions)) {
-      const access = perms?.Cases || perms?.cases;
-      if (!access) continue;
-      if (access === 'full') orgAccess[org] = 'full';
-      else if (access === 'view' && orgAccess[org] !== 'full') orgAccess[org] = 'view';
-    }
-    return orgAccess;
-  };
-
-  const orgAccess = getCasePermissionsByOrg();
-  const hasCaseAccess = Object.values(orgAccess).some(
-    (level) => level === 'view' || level === 'full'
-  );
 
   const loadCases = async () => {
     setLoading(true);
     try {
-      const res = await fetchAPI('/cases');
-      const accessibleCases = (Array.isArray(res) ? res : []).filter(c => {
-        const org = getOrganization(c);
-        return orgAccess[org] && orgAccess[org] !== 'hide';
-      });
+      const res = await fetchAPI('/customer/cases');
+      console.log('🐛 API /customer/cases returned:', res);
+      const token = localStorage.getItem('token');
+      let orgName = null;
+      let isAuthorized = false;
+
+      let username = '';
+      let role = '';
+      let organization = '';
+
+      if (token) {
+        const decoded = jwtDecode(token);
+        console.log('🔓 Decoded JWT:', decoded);
+        username = decoded.username;
+        role = decoded.role;
+        organization = decoded.organization;
+
+        setUsername(username);
+        setUserRole(role);
+        setUserOrg(organization);
+
+        orgName = organization || username;
+
+        if (username === 'admin' || role === 'customer') {
+          isAuthorized = true;
+        }
+
+        if (!isAuthorized) {
+          console.warn('🚫 Unauthorized user – redirecting to login.');
+          navigate('/');
+          return;
+        }
+      } else {
+        console.warn('⚠️ No token found in localStorage.');
+        navigate('/login');
+        return;
+      }
+
+      let accessibleCases = Array.isArray(res) ? res : [];
+
+      if (username !== 'admin') {
+        accessibleCases = accessibleCases.filter(c => {
+          const caseOrg = getOrganization(c);
+          return caseOrg?.toLowerCase() === orgName?.toLowerCase();
+        });
+      }
+
       setCases(accessibleCases);
     } catch (err) {
       console.error('❌ Failed to load cases:', err);
@@ -115,7 +142,7 @@ export default function CustomerDashboard() {
   };
 
   const handleView = (id) => {
-      navigate(`/customer/cases/${id}`, { state: { fromCustomer: true } });
+    navigate(`/customer/cases/${id}`, { state: { fromCustomer: true } });
   };
 
   const handleResetFilters = () => {
@@ -139,7 +166,6 @@ export default function CustomerDashboard() {
     };
   };
 
-  // 👇 Move scroll+reset to top-level effect
   useEffect(() => {
     setCurrentPage(1);
     window.scrollTo({
@@ -198,19 +224,22 @@ export default function CustomerDashboard() {
 
   if (loading) return <p className="text-center text-gray-500 mt-10">Loading customer cases...</p>;
 
-  if (!hasCaseAccess) {
-    return (
-      <div className="p-6 max-w-4xl mx-auto text-center text-red-600 text-lg font-semibold">
-        🚫 You do not have access to <b>Customer Cases</b>.
-      </div>
-    );
-  }
-
   return (
     <div className="p-6 max-w-6xl mx-auto bg-gray-50 min-h-screen">
-      <h2 className="text-3xl font-bold mb-6 flex items-center gap-2 text-gray-800">
-        📂 <span>Case Overview</span>
-      </h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold flex items-center gap-2 text-gray-800">
+          📂 <span>Case Overview</span>
+        </h2>
+        <button
+          onClick={() => {
+            localStorage.removeItem('token');
+            navigate('/login');
+          }}
+          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+        >
+          🔒 Logout
+        </button>
+      </div>
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
@@ -242,18 +271,24 @@ export default function CustomerDashboard() {
           <option>Pending</option>
           <option>Closed</option>
         </select>
-        <select
-          value={filterOrganization}
-          onChange={(e) => setFilterOrganization(e.target.value)}
-          className="p-3 border border-gray-300 rounded-lg bg-white"
-        >
-          <option value="">All Organizations</option>
-          {[...new Set(cases.map(getOrganization))]
-            .filter(org => org && org !== 'Unknown')
-            .map(org => (
-              <option key={org} value={org}>{org}</option>
-            ))}
-        </select>
+        {username === 'admin' ? (
+          <select
+            value={filterOrganization}
+            onChange={(e) => setFilterOrganization(e.target.value)}
+            className="p-3 border border-gray-300 rounded-lg bg-white"
+          >
+            <option value="">All Organizations</option>
+            {[...new Set(cases.map(getOrganization))]
+              .filter(org => org && org !== 'Unknown')
+              .map(org => (
+                <option key={org} value={org}>{org}</option>
+              ))}
+          </select>
+        ) : (
+          <div className="p-3 bg-gray-100 text-gray-700 rounded-lg">
+            Organization: <strong>{userOrg || 'Unknown'}</strong>
+          </div>
+        )}
         <button
           onClick={handleResetFilters}
           className="p-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"

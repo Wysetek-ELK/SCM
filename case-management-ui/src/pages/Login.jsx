@@ -1,22 +1,36 @@
 import { useEffect, useState } from "react";
 import fetchAPI from "../utils/api";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import Logo from "../components/Logo";
 
 export default function Login() {
   const navigate = useNavigate();
   const { loginType } = useParams(); // could be 'user' or 'customer' or undefined
+  const location = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [authType, setAuthType] = useState("local");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  
 
   useEffect(() => {
     if (loginType === "customer") {
       setAuthType("domain");
     }
   }, [loginType]);
+
+  useEffect(() => {
+    if (location.state?.username) {
+      setUsername(location.state.username);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if ((loginType === "user" || loginType === "customer") && !location.state?.username) {
+      navigate("/login");
+    }
+  }, [loginType, location.state, navigate]);
 
   // ⛳️ Step 1: Username only (when loginType is undefined)
   const handleUsernameOnly = async (e) => {
@@ -32,12 +46,12 @@ export default function Login() {
     } else if (response.type === 'customer') {
       navigate('/login/customer', { state: { username } });
     } else {
-      setStatus({ type: 'error', message: 'Username not found' });
+      setError("Username not found");
     }
 
   } catch (error) {
     console.error('Error during username check:', error);
-    setStatus({ type: 'error', message: 'Username not found' });
+    setError("Username not found");
   } finally {
       setLoading(false);
     }
@@ -65,7 +79,7 @@ export default function Login() {
           localStorage.removeItem("orgPermissions");
         }
 
-        if (response.user?.organization && !response.user?.role) {
+        if (response.user?.organization && response.user?.role === "customer") {
           // If user has organization but no role → must be a Customer
           navigate("/customer");
         } else {
@@ -120,7 +134,7 @@ export default function Login() {
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white border-gray-300 text-gray-900 focus:ring-blue-500"
                 placeholder="Enter your username"
                 required
-                disabled={loading}
+                 disabled={!!location.state?.username || loading}
               />
             </div>
 
@@ -147,7 +161,7 @@ export default function Login() {
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white border-gray-300 text-gray-900 focus:ring-blue-500"
                 placeholder="Enter your username"
                 required
-                disabled={loading}
+                disabled={!!location.state?.username || loading}
               />
             </div>
 

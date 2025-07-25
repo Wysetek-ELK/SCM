@@ -243,7 +243,7 @@ router.post("/login", async (req, res) => {
     const payload = {
       username: username,
       email: `${username}@customer.local`,
-      role: null, // no role needed
+      role: 'customer', // no role needed
       organization: isCustomer.name,
       permissions: [],
     };

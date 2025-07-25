@@ -1,4 +1,14 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
+import { useEffect, useState } from "react";
+import { jwtDecode } from "jwt-decode";
+
 import Dashboard from "./pages/Dashboard";
 import Cases from "./pages/Cases";
 import AddCase from "./pages/AddCase";
@@ -19,90 +29,149 @@ import CustomerCaseEdit from "./pages/CustomerCaseEdit"; // ✅ New
 import ProtectedRoute from "./components/ProtectedRoute";
 import MTTDPage from "./pages/MTTDPage"; // ✅ New import for MTTD/MTTR page
 
-function App() {
+
+// 🔄 Full-screen loader component
+function FullPageLoader() {
   return (
-    <Router future={{ v7_startTransition: true }}>
-      <Routes>
-        {/* Public Routes */}
-        {/* ✅ Login Routes */}
-        <Route path="/login/:loginType" element={<Login />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/login/:loginType" element={<Login />} />
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        fontSize: "1.5rem",
+        fontWeight: "bold",
+      }}
+    >
+      Loading...
+    </div>
+  );
+}
 
-        {/* Customer Dashboard */}
-        <Route
-          path="/customer"
-          element={
-            <PrivateRoute customerOnly={true}>
-              <CustomerDashboard />
-            </PrivateRoute>
+// 🚦 Guard that redirects and shows loading on "/"
+function CustomerRedirectGuard({ onComplete }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    const checkAndRedirect = () => {
+      if (location.pathname === "/") {
+        if (token) {
+          try {
+            const decoded = jwtDecode(token);
+            if (decoded?.role === "customer") {
+              navigate("/customer", { replace: true });
+              return;
+            }
+          } catch (err) {
+            console.error("❌ Invalid token:", err);
           }
-        />
+        }
+      }
 
-        {/* ✅ Standalone CaseDetails for Customer */}
-        <Route
-          path="/customer/cases/:id"
-          element={
-            <PrivateRoute customerOnly={true}>
-              <CaseDetails standalone />
-            </PrivateRoute>
-          }
-        />
+      onComplete(); // No redirect needed
+    };
 
-        {/* ✅ Standalone CustomerCaseEdit */}
-        <Route
-          path="/customer/cases/:id/edit"
-          element={
-            <PrivateRoute customerOnly={true}>
-              <CustomerCaseEdit />
-            </PrivateRoute>
-          }
-        />
+    checkAndRedirect();
+  }, [location.pathname, navigate]);
 
-        {/* Dashboard */}
-        <Route
-          path="/dashboard"
-          element={
-            <PrivateRoute>
-              <Dashboard />
-            </PrivateRoute>
-          }
-        />
+  return null;
+}
 
-        {/* Main Layout */}
-        <Route
-          path="/"
-          element={
-            <PrivateRoute>
-              <Layout />
-            </PrivateRoute>
-          }
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="cases/:id/edit" element={<CaseEdit />} />
-          <Route path="cases/:id" element={<CaseDetails />} />
-          <Route path="cases" element={<Cases />} />
-          <Route path="add-case" element={<AddCase />} />
+function App() {
+  const [checked, setChecked] = useState(false);
+  const location = useLocation();
 
-          {/* ✅ MTTD/MTTR Page Route */}
-          <Route path="metrics" element={<MTTDPage />} />
+  const showLoaderForRootPath = location.pathname === "/" && !checked;
 
-          {/* ✅ Protected Settings Route */}
-          <Route path="settings" element={<ProtectedRoute permissionKey="Settings" />}>
-            <Route element={<SettingsLayout />}>
-              <Route index element={<div>Please select a settings tab from above.</div>} />
-              <Route path="db" element={<DbSettings />} />
-              <Route path="email" element={<EmailSettings />} />
-              <Route path="customers" element={<CustomerSettings />} />
-              <Route path="auth" element={<AuthSettings />} />
-              <Route path="users" element={<UserSettings />} />
-              <Route path="roles" element={<RoleManagement />} />
+  return (
+    <>
+      {!checked && <CustomerRedirectGuard onComplete={() => setChecked(true)} />}
+      {showLoaderForRootPath ? (
+        <FullPageLoader />
+      ) : (
+        <Routes>
+          {/* ✅ Login Routes */}
+          <Route path="/login/:loginType" element={<Login />} />
+          <Route path="/login" element={<Login />} />
+
+          {/* ✅ Customer Routes */}
+          <Route
+            path="/customer"
+            element={
+              <PrivateRoute customerOnly={true}>
+                <CustomerDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/customer/cases/:id"
+            element={
+              <PrivateRoute customerOnly={true}>
+                <CaseDetails standalone />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/customer/cases/:id/edit"
+            element={
+              <PrivateRoute customerOnly={true}>
+                <CustomerCaseEdit />
+              </PrivateRoute>
+            }
+          />
+
+          {/* ✅ Admin/Internal Routes */}
+          <Route
+            path="/dashboard"
+            element={
+              <PrivateRoute>
+                <Dashboard />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <Layout />
+              </PrivateRoute>
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="cases/:id/edit" element={<CaseEdit />} />
+            <Route path="cases/:id" element={<CaseDetails />} />
+            <Route path="cases" element={<Cases />} />
+            <Route path="add-case" element={<AddCase />} />
+            <Route path="metrics" element={<MTTDPage />} />
+            <Route path="settings" element={<ProtectedRoute permissionKey="Settings" />}>
+              <Route element={<SettingsLayout />}>
+                <Route index element={<div>Please select a settings tab from above.</div>} />
+                <Route path="db" element={<DbSettings />} />
+                <Route path="email" element={<EmailSettings />} />
+                <Route path="customers" element={<CustomerSettings />} />
+                <Route path="auth" element={<AuthSettings />} />
+                <Route path="users" element={<UserSettings />} />
+                <Route path="roles" element={<RoleManagement />} />
+              </Route>
             </Route>
           </Route>
-        </Route>
-      </Routes>
+        </Routes>
+      )}
+    </>
+  );
+}
+
+// Wrap App with Router
+function AppWithRouter() {
+  return (
+    <Router future={{ v7_startTransition: true }}>
+      <App />
     </Router>
   );
 }
 
-export default App;
+export default AppWithRouter;
