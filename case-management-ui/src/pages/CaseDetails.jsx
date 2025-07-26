@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import fetchAPI from '../utils/api';
 import Button from '../components/ui/Button';
 import dayjs from 'dayjs';
+import { generateEmailHTML } from '../utils/emailTemplate';
 
 export default function CaseDetails({ standalone = false }) {
   const orgPermissions = JSON.parse(localStorage.getItem('orgPermissions') || '{}');
@@ -110,13 +111,16 @@ export default function CaseDetails({ standalone = false }) {
 
   const handleSendEmail = async () => {
     try {
+      const emailHTML = generateEmailHTML(caseData);
+      
       const result = await fetchAPI("/smtp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: getField(caseData, 'customerEmail', 'customerEmail', '-'),
-          subject: `Case Update: ${getField(caseData, 'Summary', 'summary', '-')}`,
-          html: `<h3>Case Summary</h3><p>${getField(caseData, 'Risk Explanation', 'riskExplanation', '-')}</p>`
+          to: caseData.customerEmail,
+          subject: `Case Update: ${caseData['Case ID'] || 'No Case ID'}`,
+          html: emailHTML,
+          replyTo
         })
       });
       alert(result.success ? "✅ Email sent successfully!" : result.message);

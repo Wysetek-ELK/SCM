@@ -125,7 +125,7 @@ export default function AddCase() {
         }
       } catch (err) {
         if (err.status === 404) {
-          setCaseIdError(''); // No duplicate found
+          setCaseIdError('');
         } else {
           console.error('❌ Error validating Case ID:', err);
           setCaseIdError('⚠️ Error validating Case ID');
@@ -146,8 +146,7 @@ export default function AddCase() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    const payload = { ...caseData }; // 👈 Now sends "Case ID" as field, not caseId
+    const payload = { ...caseData };
 
     if (!payload['Case ID']) {
       setCaseIdError('⚠️ Case ID is required');
@@ -180,9 +179,8 @@ export default function AddCase() {
       }
     } catch (err) {
       console.error('❌ Failed to save case:', err);
-
       if (err.message.includes('E11000') && err.message.includes('Case ID')) {
-        setCaseIdError(`⚠️ Duplicate Case ID "${payload['Case ID']}" detected. Please use a unique Case ID.`);
+        setCaseIdError(`⚠️ Duplicate Case ID "${payload['Case ID']}" detected.`);
         alert(caseIdError);
       } else {
         alert('❌ Failed to save case to MongoDB.\nError: ' + err.message);
@@ -201,8 +199,28 @@ export default function AddCase() {
     const emailHTML = generateEmailHTML('case', caseData);
     const replyTo = "mssp@wysetek.com,notification@wysetek.com,wysetekcdc@gmail.com";
 
+    if (!caseData['Case ID']) {
+      alert('⚠️ Case ID is required for sending email.');
+      return;
+    }
+
     try {
-      const result = await fetchAPI("/smtp/send", {
+      const existing = await fetchAPI(`/cases/by-caseid/${encodeURIComponent(caseData['Case ID'])}`);
+      if (existing && existing['Case ID']) {
+        alert(`❌ Case ID "${caseData['Case ID']}" already exists. Cannot send email.`);
+        return;
+      }
+    } catch (checkErr) {
+      if (checkErr.status !== 404) {
+        console.error("❌ Failed to check existing case:", checkErr);
+        alert("❌ Error checking case before sending email.");
+        return;
+      }
+      // Continue if 404 (not found)
+    }
+
+    try {
+      const emailResult = await fetchAPI("/smtp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -212,10 +230,34 @@ export default function AddCase() {
           replyTo
         })
       });
-      alert(result.success ? "✅ Email sent successfully!" : result.message);
+
+      if (!emailResult.success) {
+        alert(emailResult.message || "❌ Failed to send email.");
+        return;
+      }
+
+      alert("✅ Email sent successfully!");
+
+      const saveResult = await fetchAPI('/cases', {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...caseData,
+          emailSent: true,
+          emailSentAt: new Date().toISOString()
+        })
+      });
+
+      if (saveResult.success) {
+        alert("✅ Case saved successfully after sending email.");
+        navigate('/cases');
+      } else {
+        alert("❌ Email sent but case save failed.");
+      }
+
     } catch (err) {
-      console.error("❌ Failed to send email:", err);
-      alert("❌ Failed to send email.");
+      console.error("❌ Failed in send+save flow:", err);
+      alert("❌ Error while sending email or saving case.");
     }
   };
 
@@ -225,45 +267,31 @@ export default function AddCase() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block mb-1 font-medium">Paste Incident Data</label>
-          <textarea
-            onPaste={handlePaste}
-            placeholder="Paste incident data here..."
-            className="w-full p-2 border rounded h-40"
-          ></textarea>
+          <textarea onPaste={handlePaste} placeholder="Paste incident data here..." className="w-full p-2 border rounded h-40" />
         </div>
 
-        {orderedFields.map((field) => {
-          if (field === 'Assets' && caseData.Assets.length > 0) {
-            return (
-              <div key={field}>
-                <label className="block mb-1 font-medium">Assets</label>
-                <ul className="border p-2 rounded bg-gray-50 max-h-40 overflow-y-auto">
-                  {caseData.Assets.map((asset, idx) => (
-                    <li key={idx}>{asset}</li>
-                  ))}
-                </ul>
-              </div>
-            );
-          }
-
-          if (field === 'Incidents' && caseData.Incidents.length > 0) {
-            return (
-              <div key={field}>
-                <label className="block mb-1 font-medium">Incidents</label>
-                <ul className="border p-2 rounded bg-gray-50 max-h-60 overflow-y-auto">
-                  {caseData.Incidents.map((incident, idx) => (
-                    <li key={idx} className="mb-2">
-                      <strong>ID:</strong> {incident.ID}<br />
-                      <strong>Description:</strong> {incident.Description}<br />
-                      <strong>Timestamp:</strong> {incident.Timestamp}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          }
-
-          return (
+        {orderedFields.map((field) => (
+          field === 'Assets' && caseData.Assets.length > 0 ? (
+            <div key={field}>
+              <label className="block mb-1 font-medium">Assets</label>
+              <ul className="border p-2 rounded bg-gray-50 max-h-40 overflow-y-auto">
+                {caseData.Assets.map((asset, idx) => <li key={idx}>{asset}</li>)}
+              </ul>
+            </div>
+          ) : field === 'Incidents' && caseData.Incidents.length > 0 ? (
+            <div key={field}>
+              <label className="block mb-1 font-medium">Incidents</label>
+              <ul className="border p-2 rounded bg-gray-50 max-h-60 overflow-y-auto">
+                {caseData.Incidents.map((incident, idx) => (
+                  <li key={idx} className="mb-2">
+                    <strong>ID:</strong> {incident.ID}<br />
+                    <strong>Description:</strong> {incident.Description}<br />
+                    <strong>Timestamp:</strong> {incident.Timestamp}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
             <div key={field}>
               <label className="block mb-1 font-medium">{field}</label>
               <input
@@ -271,26 +299,18 @@ export default function AddCase() {
                 name={field}
                 value={caseData[field] || ''}
                 onChange={handleChange}
-                className={`w-full p-2 border rounded ${
-                  field === 'Case ID' && caseIdError ? 'border-red-500' : ''
-                }`}
+                className={`w-full p-2 border rounded ${field === 'Case ID' && caseIdError ? 'border-red-500' : ''}`}
               />
               {field === 'Case ID' && caseIdError && (
                 <p className="text-red-500 text-sm mt-1">{caseIdError}</p>
               )}
             </div>
-          );
-        })}
+          )
+        ))}
 
         <div>
           <label className="block mb-1 font-medium">Customer</label>
-          <select
-            name="customer"
-            value={caseData.customer}
-            onChange={handleCustomerChange}
-            className="w-full p-2 border rounded"
-            disabled={customerLocked}
-          >
+          <select name="customer" value={caseData.customer} onChange={handleCustomerChange} className="w-full p-2 border rounded" disabled={customerLocked}>
             <option value="">Select Customer</option>
             {customers.map(c => (
               <option key={c._id} value={c.name}>{c.name}</option>
@@ -300,55 +320,22 @@ export default function AddCase() {
 
         <div>
           <label className="block mb-1 font-medium">Customer Emails</label>
-          <input
-            type="text"
-            name="customerEmail"
-            value={caseData.customerEmail}
-            readOnly
-            className="w-full p-2 border rounded bg-gray-100"
-          />
+          <input type="text" name="customerEmail" value={caseData.customerEmail} readOnly className="w-full p-2 border rounded bg-gray-100" />
         </div>
 
         <div>
           <label className="block mb-1 font-medium">Recommendations</label>
-          <textarea
-            name="recommendations"
-            value={caseData.recommendations}
-            onChange={handleChange}
-            className="w-full p-2 border rounded h-24"
-            placeholder="Add recommendations for customer..."
-          ></textarea>
+          <textarea name="recommendations" value={caseData.recommendations} onChange={handleChange} className="w-full p-2 border rounded h-24" placeholder="Add recommendations for customer..." />
         </div>
 
         <div className="flex gap-4">
-          <button
-            type="submit"
-            disabled={!hasFullAddPermission}
-            className={`px-4 py-2 rounded text-black ${
-              hasFullAddPermission
-                ? 'bg-blue-600 hover:bg-blue-700'
-                : 'bg-gray-400 cursor-not-allowed'
-            }`}
-          >
+          <button type="submit" disabled={!hasFullAddPermission} className={`px-4 py-2 rounded text-black ${hasFullAddPermission ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}>
             Save Case
           </button>
-          <button
-            type="button"
-            onClick={handlePreviewEmail}
-            className="px-4 py-2 bg-yellow-600 text-black rounded hover:bg-yellow-700"
-          >
+          <button type="button" onClick={handlePreviewEmail} className="px-4 py-2 bg-yellow-600 text-black rounded hover:bg-yellow-700">
             Preview Email
           </button>
-          <button
-            type="button"
-            onClick={handleSendEmail}
-            disabled={!hasFullAddPermission}
-            className={`px-4 py-2 rounded text-black ${
-              hasFullAddPermission
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-gray-400 cursor-not-allowed'
-            }`}
-          >
+          <button type="button" onClick={handleSendEmail} disabled={!hasFullAddPermission} className={`px-4 py-2 rounded text-black ${hasFullAddPermission ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}>
             Send Email
           </button>
         </div>
